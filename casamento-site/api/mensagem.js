@@ -1,11 +1,11 @@
 // Arquivo: casamento-site/api/mensagem.js
-// Documentação: Função Serverless da Vercel (ES Module) para envio seguro de mensagens via Evolution API.
+// Documentação: Função Serverless da Vercel para envio de mensagens via Evolution API.
 
 export default async function handler(req, res) {
-  // Define o cabeçalho de resposta padrão como JSON para evitar erros no frontend
+  // Define o cabeçalho para garantir resposta em formato JSON
   res.setHeader("Content-Type", "application/json");
 
-  // 1. Aceita apenas requisições HTTP do tipo POST
+  // 1. Permite apenas requisições HTTP do tipo POST
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
@@ -14,12 +14,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 2. Extrai e valida o corpo da requisição enviada pelo React
+    // 2. Lê e valida os dados enviados pelo formulário React
     const body =
       typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     const { nome, mensagem } = body;
 
-    // 3. Validação dos campos obrigatórios do formulário
     if (!nome || !mensagem) {
       return res.status(400).json({
         sucesso: false,
@@ -27,29 +26,28 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Carrega as Variáveis de Ambiente cadastradas na Vercel
+    // 3. Captura as Variáveis de Ambiente configuradas no painel da Vercel
     let rawUrl = process.env.EVOLUTION_URL || "";
     let instanceName = process.env.INSTANCE_NAME || "toshio bot";
     let apiKey = process.env.EVOLUTION_API_KEY || "";
     let groupJid = process.env.GROUP_JID || "";
 
-    // 5. Higienização da URL: Remove formatação Markdown, aspas e espaços acidentais
+    // 4. Limpeza e formatação dos textos (remove espaços ou aspas acidentais)
     rawUrl = rawUrl
-      .replace(/\[.*?\]\((.*?)\)/g, "$1") // Remove [texto](url) caso colado via Markdown
-      .replace(/[\[\]\(\)'"]/g, "") // Remove caracteres especiais soltos
+      .replace(/\[.*?\]\((.*?)\)/g, "$1")
+      .replace(/[\[\]\(\)'"]/g, "")
       .trim()
-      .replace(/\/+$/, ""); // Remove barras extras no final
-
+      .replace(/\/+$/, "");
     instanceName = instanceName.trim();
     apiKey = apiKey.trim();
     groupJid = groupJid.trim();
 
-    // 6. Verificação defensiva das variáveis de ambiente na Vercel
+    // 5. Diagnóstico de segurança: Verifica se todas as variáveis necessárias existem
     if (!rawUrl || !apiKey || !groupJid) {
-      console.error("--- ERRO: VARIÁVEIS DE AMBIENTE INCOMPLETAS ---");
-      console.error("EVOLUTION_URL:", rawUrl ? "OK" : "FALTANDO");
-      console.error("EVOLUTION_API_KEY:", apiKey ? "OK" : "FALTANDO");
-      console.error("GROUP_JID:", groupJid ? "OK" : "FALTANDO");
+      console.error("=== DIAGNÓSTICO DE VARIÁVEIS NA VERCEL ===");
+      console.error("EVOLUTION_URL:", rawUrl ? "ENCONTRADA" : "FALTANDO");
+      console.error("EVOLUTION_API_KEY:", apiKey ? "ENCONTRADA" : "FALTANDO");
+      console.error("GROUP_JID:", groupJid ? "ENCONTRADA" : "FALTANDO");
 
       return res.status(500).json({
         sucesso: false,
@@ -57,13 +55,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // 7. Monta o endpoint convertendo o espaço do "toshio bot" em "%20" (URL segura)
+    // 6. Monta a URL de destino codificando o nome da instância (toshio bot -> toshio%20bot)
     const endpointCompleto = `${rawUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
 
-    // 8. Prepara a mensagem formatada para o WhatsApp
+    // 7. Formata o texto que será entregue no WhatsApp
     const textoFormatado = `💌 *Nova mensagem para os noivos!*\n\n*De:* ${nome}\n*Mensagem:* ${mensagem}`;
 
-    // 9. Envia a requisição HTTP POST para a Evolution API via Cloudflare Tunnel
+    // 8. Envia a requisição HTTP POST para a Evolution API
     const response = await fetch(endpointCompleto, {
       method: "POST",
       headers: {
@@ -76,7 +74,6 @@ export default async function handler(req, res) {
       }),
     });
 
-    // 10. Trata a resposta retornada pela Evolution API
     const textoResposta = await response.text();
     let data = {};
     try {
@@ -88,7 +85,7 @@ export default async function handler(req, res) {
     if (response.ok) {
       return res.status(200).json({ sucesso: true, resposta: data });
     } else {
-      console.error("Erro na Evolution API:", data);
+      console.error("Erro na resposta da Evolution API:", data);
       return res.status(500).json({
         sucesso: false,
         erro: "A Evolution API não conseguiu processar o envio.",
@@ -96,10 +93,10 @@ export default async function handler(req, res) {
       });
     }
   } catch (error) {
-    console.error("--- ERRO CRÍTICO NA FUNÇÃO SERVERLESS ---", error);
+    console.error("Erro crítico na execução:", error);
     return res.status(500).json({
       sucesso: false,
-      erro: "Erro interno ao processar o envio da mensagem.",
+      erro: "Erro interno no servidor ao enviar mensagem.",
       detalhe: error.message || String(error),
     });
   }
