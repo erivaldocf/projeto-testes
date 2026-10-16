@@ -98,12 +98,12 @@ export default function App() {
     });
   };
 
+  // Função no App.jsx com tratamento de erros de rede e JSON
   const handleMensagemSubmit = async (e) => {
     e.preventDefault();
-    setEnviandoMensagem(true); // Desabilita o botão e mostra "Enviando..."
+    setEnviandoMensagem(true);
 
     try {
-      // Faz o envio para a rota relativa /api/mensagem
       const response = await fetch("/api/mensagem", {
         method: "POST",
         headers: {
@@ -115,22 +115,33 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      // Lê a resposta primeiro como texto para evitar crash de JSON inesperado
+      const textoResposta = await response.text();
+      let data = {};
+
+      try {
+        data = JSON.parse(textoResposta);
+      } catch (e) {
+        console.error(
+          "Resposta do servidor não veio em formato JSON:",
+          textoResposta,
+        );
+      }
 
       if (response.ok && data.sucesso) {
         alert("Sua mensagem foi enviada com sucesso para o grupo dos noivos!");
-        // Limpa os campos do formulário
         setFormDataMensagem({ nome: "", mensagem: "" });
       } else {
-        alert(
-          "Não foi possível enviar a mensagem no momento. Tente novamente.",
-        );
+        const mensagemErro =
+          data.erro ||
+          "Não foi possível enviar a mensagem no momento. Tente novamente.";
+        alert(mensagemErro);
       }
     } catch (error) {
-      console.error("Erro ao conectar com o servidor:", error);
-      alert("Erro de rede ao tentar enviar a mensagem.");
+      console.error("Erro de conexão:", error);
+      alert("Erro de conexão ao tentar enviar a mensagem.");
     } finally {
-      setEnviandoMensagem(false); // Reabilita o botão
+      setEnviandoMensagem(false);
     }
   };
 
