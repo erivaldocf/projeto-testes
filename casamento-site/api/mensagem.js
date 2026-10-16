@@ -1,11 +1,11 @@
 // Arquivo: casamento-site/api/mensagem.js
-// Documentação: Função Serverless com higienização automática de URL e tratamento defensivo de erros.
+// Documentação: Função Serverless da Vercel (ES Module) para envio seguro de mensagens via Evolution API.
 
-module.exports = async function handler(req, res) {
-  // Define o cabeçalho de resposta padrão como JSON
+export default async function handler(req, res) {
+  // Define o cabeçalho de resposta padrão como JSON para evitar erros no frontend
   res.setHeader("Content-Type", "application/json");
 
-  // 1. Permite apenas requisições HTTP do tipo POST
+  // 1. Aceita apenas requisições HTTP do tipo POST
   if (req.method !== "POST") {
     return res.status(405).json({
       sucesso: false,
@@ -14,11 +14,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // 2. Garante a leitura do corpo da requisição
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    const { nome, mensagem } = body || {};
+    // 2. Extrai e valida o corpo da requisição enviada pelo React
+    const body =
+      typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+    const { nome, mensagem } = body;
 
-    // 3. Validação dos campos do formulário
+    // 3. Validação dos campos obrigatórios do formulário
     if (!nome || !mensagem) {
       return res.status(400).json({
         sucesso: false,
@@ -26,44 +27,43 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // 4. Carrega as Variáveis de Ambiente da Vercel
+    // 4. Carrega as Variáveis de Ambiente cadastradas na Vercel
     let rawUrl = process.env.EVOLUTION_URL || "";
     let instanceName = process.env.INSTANCE_NAME || "toshio bot";
     let apiKey = process.env.EVOLUTION_API_KEY || "";
     let groupJid = process.env.GROUP_JID || "";
 
-    // 5. HIGIENIZAÇÃO DA URL: Remove sintaxe Markdown [link](url), colchetes, aspas ou espaços extras
+    // 5. Higienização da URL: Remove formatação Markdown, aspas e espaços acidentais
     rawUrl = rawUrl
-      .replace(/\[.*?\]\((.*?)\)/g, "$1") // Extrai a URL se for colada em formato Markdown [texto](url)
-      .replace(/[\[\]\(\)'"]/g, "") // Remove colchetes, parênteses e aspas soltas
+      .replace(/\[.*?\]\((.*?)\)/g, "$1") // Remove [texto](url) caso colado via Markdown
+      .replace(/[\[\]\(\)'"]/g, "") // Remove caracteres especiais soltos
       .trim()
-      .replace(/\/+$/, ""); // Remove barras extras no final da URL
+      .replace(/\/+$/, ""); // Remove barras extras no final
 
     instanceName = instanceName.trim();
     apiKey = apiKey.trim();
     groupJid = groupJid.trim();
 
-    // 6. Verificação defensiva das variáveis na Vercel
+    // 6. Verificação defensiva das variáveis de ambiente na Vercel
     if (!rawUrl || !apiKey || !groupJid) {
-      console.error("--- ERRO: VARIÁVEIS INCOMPLETAS NA VERCEL ---");
+      console.error("--- ERRO: VARIÁVEIS DE AMBIENTE INCOMPLETAS ---");
       console.error("EVOLUTION_URL:", rawUrl ? "OK" : "FALTANDO");
       console.error("EVOLUTION_API_KEY:", apiKey ? "OK" : "FALTANDO");
       console.error("GROUP_JID:", groupJid ? "OK" : "FALTANDO");
 
       return res.status(500).json({
         sucesso: false,
-        erro: "Configurações (Variáveis de Ambiente) incompletas na Vercel. Verifique o painel.",
+        erro: "Configurações (Variáveis de Ambiente) incompletas na Vercel.",
       });
     }
 
-    // 7. Monta o endpoint com codificação segura (converte espaços em %20)
+    // 7. Monta o endpoint convertendo o espaço do "toshio bot" em "%20" (URL segura)
     const endpointCompleto = `${rawUrl}/message/sendText/${encodeURIComponent(instanceName)}`;
-    console.log("Enviando requisição para:", endpointCompleto);
 
-    // 8. Prepara o texto da mensagem para o WhatsApp
+    // 8. Prepara a mensagem formatada para o WhatsApp
     const textoFormatado = `💌 *Nova mensagem para os noivos!*\n\n*De:* ${nome}\n*Mensagem:* ${mensagem}`;
 
-    // 9. Envia a requisição HTTP POST para a Evolution API
+    // 9. Envia a requisição HTTP POST para a Evolution API via Cloudflare Tunnel
     const response = await fetch(endpointCompleto, {
       method: "POST",
       headers: {
@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
       }),
     });
 
-    // 10. Processa a resposta retornada
+    // 10. Trata a resposta retornada pela Evolution API
     const textoResposta = await response.text();
     let data = {};
     try {
@@ -88,7 +88,7 @@ module.exports = async function handler(req, res) {
     if (response.ok) {
       return res.status(200).json({ sucesso: true, resposta: data });
     } else {
-      console.error("Erro retornado pela Evolution API:", data);
+      console.error("Erro na Evolution API:", data);
       return res.status(500).json({
         sucesso: false,
         erro: "A Evolution API não conseguiu processar o envio.",
@@ -96,11 +96,11 @@ module.exports = async function handler(req, res) {
       });
     }
   } catch (error) {
-    console.error("--- ERRO CRÍTICO NA SERVERLESS FUNCTION ---", error);
+    console.error("--- ERRO CRÍTICO NA FUNÇÃO SERVERLESS ---", error);
     return res.status(500).json({
       sucesso: false,
-      erro: "Erro interno ao conectar com a Evolution API.",
+      erro: "Erro interno ao processar o envio da mensagem.",
       detalhe: error.message || String(error),
     });
   }
-};
+}
