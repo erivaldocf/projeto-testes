@@ -1,7 +1,10 @@
-// Arquivo: api/mensagem.js
-// Documentação: Função Serverless com tratamento de URLs e logs de diagnóstico.
+// Arquivo: casamento-site/api/mensagem.js
+// Documentação: Função Serverless da Vercel para envio seguro via Evolution API com tratamento de erros.
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
+  // Configura a resposta padrão do servidor para o formato JSON
+  res.setHeader("Content-Type", "application/json");
+
   // 1. Permite apenas requisições HTTP do tipo POST
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -11,10 +14,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 2. Extrai os dados enviados pelo formulário React
-    const { nome, mensagem } = req.body || {};
+    // 2. Garante a leitura correta dos dados enviados pelo formulário React
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const { nome, mensagem } = body || {};
 
-    // 3. Validações iniciais de preenchimento
+    // 3. Valida se os campos obrigatórios foram preenchidos
     if (!nome || !mensagem) {
       return res.status(400).json({
         sucesso: false,
@@ -22,35 +26,37 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Carrega as variáveis de ambiente cadastradas na Vercel
+    // 4. Carrega as Variáveis de Ambiente cadastradas na Vercel
     const EVOLUTION_URL = process.env.EVOLUTION_URL;
     const INSTANCE_NAME = process.env.INSTANCE_NAME || "toshio bot";
     const API_KEY = process.env.EVOLUTION_API_KEY;
     const GROUP_JID = process.env.GROUP_JID;
 
-    // Log de verificação (visível na aba Logs da Vercel)
-    console.log("--- Executando Envio de Mensagem ---");
-    console.log("URL de Destino:", EVOLUTION_URL);
-    console.log("Nome da Instância:", INSTANCE_NAME);
-
-    // 5. Verifica se as variáveis foram cadastradas na Vercel
+    // 5. Verificação defensiva das variáveis de ambiente
     if (!EVOLUTION_URL || !API_KEY || !GROUP_JID) {
-      console.error("Erro: Variáveis de ambiente incompletas na Vercel.");
+      console.error("--- ERRO DE CONFIGURAÇÃO NA VERCEL ---");
+      console.error(
+        "EVOLUTION_URL:",
+        EVOLUTION_URL ? "Configurada" : "FALTANDO",
+      );
+      console.error("EVOLUTION_API_KEY:", API_KEY ? "Configurada" : "FALTANDO");
+      console.error("GROUP_JID:", GROUP_JID ? "Configurado" : "FALTANDO");
+
       return res.status(500).json({
         sucesso: false,
-        erro: "Configurações do servidor (Variáveis de Ambiente) incompletas.",
+        erro: "Configurações (Variáveis de Ambiente) incompletas na Vercel.",
       });
     }
 
-    // 6. Formata a URL com segurança (removendo barras extras e tratando o espaço de "toshio bot")
-    const urlLimpa = EVOLUTION_URL.replace(/\/+$/, "");
-    const instanciaCodificada = encodeURIComponent(INSTANCE_NAME.trim());
-    const endpointCompleto = `${urlLimpa}/message/sendText/${instanciaCodificada}`;
+    // 6. Formata a URL de destino com tratamento de espaços no nome do bot
+    const urlBase = String(EVOLUTION_URL).trim().replace(/\/+$/, "");
+    const instanciaFormatada = encodeURIComponent(String(INSTANCE_NAME).trim());
+    const endpointCompleto = `${urlBase}/message/sendText/${instanciaFormatada}`;
 
-    // 7. Formata o texto da mensagem
+    // 7. Prepara a mensagem formatada para o WhatsApp
     const textoFormatado = `💌 *Nova mensagem para os noivos!*\n\n*De:* ${nome}\n*Mensagem:* ${mensagem}`;
 
-    // 8. Faz a requisição HTTP POST para a Evolution API
+    // 8. Faz a chamada HTTP POST para a Evolution API através do Cloudflare
     const response = await fetch(endpointCompleto, {
       method: "POST",
       headers: {
@@ -65,23 +71,23 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // 9. Retorna a resposta adequada para o site
+    // 9. Retorna o resultado do envio para o site
     if (response.ok) {
       return res.status(200).json({ sucesso: true, resposta: data });
     } else {
-      console.error("Erro devolvido pela Evolution API:", data);
+      console.error("Erro na resposta da Evolution API:", data);
       return res.status(500).json({
         sucesso: false,
-        erro: "Falha ao processar mensagem na Evolution API.",
+        erro: "A Evolution API não conseguiu processar o envio.",
       });
     }
   } catch (error) {
-    // Captura qualquer exceção não tratada para não derrubar o servidor
-    console.error("Erro crítico na função Vercel:", error);
+    // Captura qualquer exceção inesperada e loga o erro completo no painel da Vercel
+    console.error("--- ERRO NA SERVERLESS FUNCTION ---", error);
     return res.status(500).json({
       sucesso: false,
-      erro: "Erro interno ao conectar com a Evolution API.",
-      detalhe: error.message,
+      erro: "Erro interno no servidor.",
+      detalhe: error.message || String(error),
     });
   }
-}
+};
